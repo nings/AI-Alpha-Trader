@@ -1,0 +1,133 @@
+version: '3.8'
+
+services:
+  # MCP Math Service
+  mcp-math:
+    build: .
+    container_name: ai-trader-mcp-math
+    command: python agent_tools/tool_math.py
+    ports:
+      - "8000:8000"
+    environment:
+      - MATH_HTTP_PORT=8000
+    networks:
+      - ai-trader-network
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8000)); s.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # MCP Search Service
+  mcp-search:
+    build: .
+    container_name: ai-trader-mcp-search
+    command: python agent_tools/tool_jina_search.py
+    ports:
+      - "8001:8001"
+    environment:
+      - SEARCH_HTTP_PORT=8001
+      - JINA_API_KEY=${JINA_API_KEY}
+    networks:
+      - ai-trader-network
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8001)); s.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # MCP Trade Service
+  mcp-trade:
+    build: .
+    container_name: ai-trader-mcp-trade
+    command: python agent_tools/tool_trade.py
+    ports:
+      - "8002:8002"
+    environment:
+      - TRADE_HTTP_PORT=8002
+      - RUNTIME_ENV_PATH=/app/runtime_env.json
+    networks:
+      - ai-trader-network
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./runtime_env.json:/app/runtime_env.json
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8002)); s.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # MCP Price Service
+  mcp-price:
+    build: .
+    container_name: ai-trader-mcp-price
+    command: python agent_tools/tool_get_price_local.py
+    ports:
+      - "8003:8003"
+    environment:
+      - GETPRICE_HTTP_PORT=8003
+      - RUNTIME_ENV_PATH=/app/runtime_env.json
+    networks:
+      - ai-trader-network
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./runtime_env.json:/app/runtime_env.json
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8003)); s.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Main AI Trader Application
+  ai-trader:
+    build: .
+    container_name: ai-trader-main
+    command: python main.py
+    environment:
+      - OPENAI_API_BASE=${OPENAI_API_BASE}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ALPHAADVANTAGE_API_KEY=${ALPHAADVANTAGE_API_KEY}
+      - JINA_API_KEY=${JINA_API_KEY}
+      - MATH_HTTP_PORT=8000
+      - SEARCH_HTTP_PORT=8001
+      - TRADE_HTTP_PORT=8002
+      - GETPRICE_HTTP_PORT=8003
+      - AGENT_MAX_STEP=30
+      - RUNTIME_ENV_PATH=/app/runtime_env.json
+    networks:
+      - ai-trader-network
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./configs:/app/configs
+      - ./runtime_env.json:/app/runtime_env.json
+    depends_on:
+      mcp-math:
+        condition: service_healthy
+      mcp-search:
+        condition: service_healthy
+      mcp-trade:
+        condition: service_healthy
+      mcp-price:
+        condition: service_healthy
+    restart: on-failure
+
+networks:
+  ai-trader-network:
+    driver: bridge
+
+volumes:
+  data:
+  logs:

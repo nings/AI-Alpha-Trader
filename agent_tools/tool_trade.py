@@ -194,4 +194,4 @@ if __name__ == "__main__":
     # new_result = sell("AAPL", 1)
     # print(new_result)
     port = int(os.getenv("TRADE_HTTP_PORT", "8002"))
-    mcp.run(transport="streamable-http", port=port)
+    mcp.run(transport="streamable-http", host="0.0.0.0", port=port)

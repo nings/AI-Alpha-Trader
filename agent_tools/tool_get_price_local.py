@@ -131,5 +131,5 @@ if __name__ == "__main__":
     # print("a test case")
     # print(get_price_local_function("AAPL", "2025-10-16"))
     port = int(os.getenv("GETPRICE_HTTP_PORT", "8003"))
-    mcp.run(transport="streamable-http", port=port)
+    mcp.run(transport="streamable-http", host="0.0.0.0", port=port)
 

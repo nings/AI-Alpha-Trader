@@ -124,28 +124,44 @@ class BaseAgent:
         
     def _get_default_mcp_config(self) -> Dict[str, Dict[str, Any]]:
         """Get default MCP configuration"""
+        # Use Docker service names in container, localhost otherwise
+        is_docker = os.getenv('DOCKER_ENV') == 'true'
+        
+        def get_service_url(service_name: str, port: str) -> str:
+            if is_docker:
+                # In Docker, use service name from docker-compose
+                return f"http://{service_name}:{port}/mcp"
+            else:
+                # Locally, use localhost
+                return f"http://localhost:{port}/mcp"
+        
         return {
             "math": {
                 "transport": "streamable_http",
-                "url": f"http://localhost:{os.getenv('MATH_HTTP_PORT', '8000')}/mcp",
+                "url": get_service_url("mcp-math", os.getenv('MATH_HTTP_PORT', '8000')),
             },
             "stock_local": {
                 "transport": "streamable_http",
-                "url": f"http://localhost:{os.getenv('GETPRICE_HTTP_PORT', '8003')}/mcp",
+                "url": get_service_url("mcp-price", os.getenv('GETPRICE_HTTP_PORT', '8003')),
             },
             "search": {
                 "transport": "streamable_http",
-                "url": f"http://localhost:{os.getenv('SEARCH_HTTP_PORT', '8001')}/mcp",
+                "url": get_service_url("mcp-search", os.getenv('SEARCH_HTTP_PORT', '8001')),
             },
             "trade": {
                 "transport": "streamable_http",
-                "url": f"http://localhost:{os.getenv('TRADE_HTTP_PORT', '8002')}/mcp",
+                "url": get_service_url("mcp-trade", os.getenv('TRADE_HTTP_PORT', '8002')),
             },
         }
     
     async def initialize(self) -> None:
         """Initialize MCP client and AI model"""
         print(f"🚀 Initializing agent: {self.signature}")
+        
+        # Debug: Print MCP configuration
+        print(f"📡 MCP Configuration:")
+        for service_name, config in self.mcp_config.items():
+            print(f"  - {service_name}: {config.get('url')}")
         
         # Create MCP client
         self.client = MultiServerMCPClient(self.mcp_config)

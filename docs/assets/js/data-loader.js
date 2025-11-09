@@ -20,6 +20,7 @@ class DataLoader {
                 'MiniMax-M2',
                 'deepseek-chat-v3.1',
                 'gpt-5',
+                'gpt-4o-mini',
                 'claude-3.7-sonnet',
             ];
 
@@ -354,6 +355,7 @@ class DataLoader {
             'qwen3-max': 'Qwen3-max',
             'MiniMax-M2': 'MiniMax-M2',
             'gpt-5': 'GPT-5',
+            'gpt-4o-mini': 'GPT-4o-mini',
             'deepseek-chat-v3.1': 'DeepSeek-v3.1',
             'claude-3.7-sonnet': 'Claude 3.7 Sonnet',
             'QQQ': 'QQQ invesco'
@@ -368,6 +370,7 @@ class DataLoader {
             'qwen3-max': './figs/qwen.svg',
             'MiniMax-M2': './figs/minimax.svg',
             'gpt-5': './figs/openai.svg',
+            'gpt-4o-mini': './figs/openai.svg',
             'claude-3.7-sonnet': './figs/claude-color.svg',
             'deepseek-chat-v3.1': './figs/deepseek.svg',
             'QQQ': './figs/stock.svg'  // 使用默认图标
@@ -394,6 +397,7 @@ class DataLoader {
             'qwen3-max': '#0066ff',       // Qwen Blue
             'MiniMax-M2': '#ff0000',       // MiniMax Red
             'gpt-5': '#10a37f',                  // OpenAI Green
+            'gpt-4o-mini': '#10a37f',            // OpenAI Green
             'deepseek-chat-v3.1': '#4a90e2',  // DeepSeek Blue
             'claude-3.7-sonnet': '#cc785c', // Anthropic Orange
             'QQQ': '#ff6b00'                       // QQQ Orange

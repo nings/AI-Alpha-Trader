@@ -17,6 +17,10 @@ AGENT_REGISTRY = {
         "module": "agent.base_agent.base_agent",
         "class": "BaseAgent"
     },
+    "TraditionalAgent": {
+        "module": "agent.traditional_agent.traditional_agent",
+        "class": "TraditionalAgent"
+    },
 }
 
 
@@ -153,48 +157,73 @@ async def main(config_path=None):
     for model_config in enabled_models:
         # Read basemodel and signature directly from configuration file
         model_name = model_config.get("name", "unknown")
-        basemodel = model_config.get("basemodel")
         signature = model_config.get("signature")
-        openai_base_url = model_config.get("openai_base_url",None)
-        openai_api_key = model_config.get("openai_api_key",None)
 
-        # Validate required fields
-        if not basemodel:
-            print(f"❌ Model {model_name} missing basemodel field")
-            continue
+        # Validate signature (required for all agents)
         if not signature:
             print(f"❌ Model {model_name} missing signature field")
             continue
-        
+
         print("=" * 60)
         print(f"🤖 Processing model: {model_name}")
         print(f"📝 Signature: {signature}")
-        print(f"🔧 BaseModel: {basemodel}")
-        
+
         # Initialize runtime configuration
         write_config_value("SIGNATURE", signature)
         write_config_value("TODAY_DATE", END_DATE)
         write_config_value("IF_TRADE", False)
 
-
         # Get log path configuration
         log_path = log_config.get("log_path", "./data/agent_data")
 
         try:
-            # Dynamically create Agent instance
-            agent = AgentClass(
-                signature=signature,
-                basemodel=basemodel,
-                stock_symbols=all_nasdaq_100_symbols,
-                log_path=log_path,
-                openai_base_url=openai_base_url,
-                openai_api_key=openai_api_key,
-                max_steps=max_steps,
-                max_retries=max_retries,
-                base_delay=base_delay,
-                initial_cash=initial_cash,
-                init_date=INIT_DATE
-            )
+            # Create Agent instance with appropriate parameters based on agent type
+            if agent_type == "TraditionalAgent":
+                # TraditionalAgent doesn't need AI model parameters
+                strategy = model_config.get("strategy", "multi_indicator")
+                max_position_pct = model_config.get("max_position_pct", 0.15)
+                top_n_stocks = model_config.get("top_n_stocks", 10)
+
+                print(f"📊 Strategy: {strategy}")
+                print(f"💰 Max Position %: {max_position_pct * 100}%")
+                print(f"🎯 Top N Stocks: {top_n_stocks}")
+
+                agent = AgentClass(
+                    signature=signature,
+                    stock_symbols=all_nasdaq_100_symbols,
+                    log_path=log_path,
+                    initial_cash=initial_cash,
+                    init_date=INIT_DATE,
+                    max_position_pct=max_position_pct,
+                    top_n_stocks=top_n_stocks,
+                    strategy=strategy
+                )
+            else:
+                # BaseAgent and other AI-based agents
+                basemodel = model_config.get("basemodel")
+                openai_base_url = model_config.get("openai_base_url", None)
+                openai_api_key = model_config.get("openai_api_key", None)
+
+                # Validate required fields for AI agents
+                if not basemodel:
+                    print(f"❌ Model {model_name} missing basemodel field")
+                    continue
+
+                print(f"🔧 BaseModel: {basemodel}")
+
+                agent = AgentClass(
+                    signature=signature,
+                    basemodel=basemodel,
+                    stock_symbols=all_nasdaq_100_symbols,
+                    log_path=log_path,
+                    openai_base_url=openai_base_url,
+                    openai_api_key=openai_api_key,
+                    max_steps=max_steps,
+                    max_retries=max_retries,
+                    base_delay=base_delay,
+                    initial_cash=initial_cash,
+                    init_date=INIT_DATE
+                )
             
             print(f"✅ {agent_type} instance created successfully: {agent}")
             

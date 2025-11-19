@@ -1,0 +1,42 @@
+{
+  "agent_type": "TraditionalAgent",
+  "date_range": {
+    "init_date": "2025-10-01",
+    "end_date": "2025-10-21"
+  },
+  "models": [
+    {
+      "name": "Traditional-MA-RSI-MACD",
+      "signature": "traditional-multi-indicator",
+      "enabled": true,
+      "strategy": "multi_indicator",
+      "max_position_pct": 0.15,
+      "top_n_stocks": 10
+    },
+    {
+      "name": "Traditional-MA-Cross",
+      "signature": "traditional-ma-cross",
+      "enabled": false,
+      "strategy": "ma_cross",
+      "max_position_pct": 0.2,
+      "top_n_stocks": 5
+    },
+    {
+      "name": "Traditional-RSI",
+      "signature": "traditional-rsi",
+      "enabled": false,
+      "strategy": "rsi",
+      "max_position_pct": 0.1,
+      "top_n_stocks": 15
+    }
+  ],
+  "agent_config": {
+    "max_steps": 1,
+    "max_retries": 3,
+    "base_delay": 1.0,
+    "initial_cash": 10000.0
+  },
+  "log_config": {
+    "log_path": "./data/agent_data"
+  }
+}

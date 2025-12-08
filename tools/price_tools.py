@@ -27,20 +27,29 @@ all_nasdaq_100_symbols = [
     "ON", "BIIB", "LULU", "CDW", "GFS"
 ]
 
-def get_yesterday_date(today_date: str) -> str:
+def get_yesterday_date(today_date: str, use_trading_calendar: bool = True) -> str:
     """
-    获取昨日日期，考虑休市日。
+    获取昨日日期，考虑休市日（包括周末和美股节假日）。
+    
     Args:
         today_date: 日期字符串，格式 YYYY-MM-DD，代表今天日期。
+        use_trading_calendar: 是否使用交易日历（考虑节假日），默认 True
 
     Returns:
-        yesterday_date: 昨日日期字符串，格式 YYYY-MM-DD。
+        yesterday_date: 上一个交易日的日期字符串，格式 YYYY-MM-DD。
     """
-    # 计算昨日日期，考虑休市日
+    if use_trading_calendar:
+        try:
+            from tools.trading_calendar import get_previous_trading_day
+            return get_previous_trading_day(today_date)
+        except ImportError:
+            pass  # 如果导入失败，回退到简单逻辑
+    
+    # 简单逻辑：只考虑周末
     today_dt = datetime.strptime(today_date, "%Y-%m-%d")
     yesterday_dt = today_dt - timedelta(days=1)
     
-    # 如果昨日是周末，向前找到最近的交易日
+    # 如果昨日是周末，向前找到最近的工作日
     while yesterday_dt.weekday() >= 5:  # 5=Saturday, 6=Sunday
         yesterday_dt -= timedelta(days=1)
     

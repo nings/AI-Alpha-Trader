@@ -21,6 +21,10 @@ AGENT_REGISTRY = {
         "module": "agent.traditional_agent.traditional_agent",
         "class": "TraditionalAgent"
     },
+    "MomentumAgent": {
+        "module": "agent.momentum_agent.momentum_agent",
+        "class": "MomentumAgent"
+    },
 }
 
 
@@ -197,6 +201,35 @@ async def main(config_path=None):
                     max_position_pct=max_position_pct,
                     top_n_stocks=top_n_stocks,
                     strategy=strategy
+                )
+            elif agent_type == "MomentumAgent":
+                # MomentumAgent - 动量策略代理
+                lookback_period = model_config.get("lookback_period", 20)
+                top_n_stocks = model_config.get("top_n_stocks", 10)
+                momentum_threshold = model_config.get("momentum_threshold", 0.0)
+                max_position_pct = model_config.get("max_position_pct", 0.15)
+                stop_loss_pct = model_config.get("stop_loss_pct", 0.08)
+                use_risk_management = model_config.get("use_risk_management", True)
+
+                print(f"📊 Strategy: Momentum")
+                print(f"📅 Lookback Period: {lookback_period} days")
+                print(f"🎯 Top N Stocks: {top_n_stocks}")
+                print(f"📈 Momentum Threshold: {momentum_threshold}")
+                print(f"💰 Max Position %: {max_position_pct * 100}%")
+                print(f"🛡️ Risk Management: {'Enabled' if use_risk_management else 'Disabled'}")
+
+                agent = AgentClass(
+                    signature=signature,
+                    stock_symbols=all_nasdaq_100_symbols,
+                    log_path=log_path,
+                    initial_cash=initial_cash,
+                    init_date=INIT_DATE,
+                    lookback_period=lookback_period,
+                    top_n_stocks=top_n_stocks,
+                    momentum_threshold=momentum_threshold,
+                    max_position_pct=max_position_pct,
+                    stop_loss_pct=stop_loss_pct,
+                    use_risk_management=use_risk_management
                 )
             else:
                 # BaseAgent and other AI-based agents

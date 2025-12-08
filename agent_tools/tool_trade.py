@@ -5,10 +5,32 @@ from typing import Dict, List, Optional, Any
 # Add project root directory to Python path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
-from tools.price_tools import get_yesterday_date, get_open_prices, get_yesterday_open_and_close_price, get_latest_position, get_yesterday_profit
+from tools.price_tools import get_yesterday_date, get_open_prices, get_yesterday_open_and_close_price, get_latest_position, get_yesterday_profit, all_nasdaq_100_symbols
 import json
-from tools.general_tools import get_config_value,write_config_value
+from tools.general_tools import get_config_value, write_config_value
+from tools.risk_management import RiskManager, create_default_risk_manager
+
 mcp = FastMCP("TradeTools")
+
+# 全局风险管理器实例
+_risk_manager: Optional[RiskManager] = None
+
+def get_risk_manager() -> RiskManager:
+    """获取或创建风险管理器实例"""
+    global _risk_manager
+    if _risk_manager is None:
+        _risk_manager = create_default_risk_manager()
+    return _risk_manager
+
+def calculate_portfolio_value(position: Dict[str, Any], prices: Dict[str, float]) -> float:
+    """计算投资组合总价值"""
+    total = position.get("CASH", 0)
+    for symbol, shares in position.items():
+        if symbol != "CASH" and shares > 0:
+            price_key = f"{symbol}_price"
+            if price_key in prices:
+                total += shares * prices[price_key]
+    return total
 
 
 
@@ -67,7 +89,9 @@ def buy(symbol: str, amount: int) -> Dict[str, Any]:
         # Stock symbol does not exist or price data is missing, return error message
         return {"error": f"Symbol {symbol} not found! This action will not be allowed.", "symbol": symbol, "date": today_date}
 
-    # Step 4: Validate buy conditions
+    # Step 4: Validate buy conditions with risk management
+    risk_manager = get_risk_manager()
+    
     # Calculate cash required for purchase: stock price × buy quantity
     try:
         cash_left = current_position["CASH"] - this_symbol_price * amount
@@ -78,30 +102,89 @@ def buy(symbol: str, amount: int) -> Dict[str, Any]:
     if cash_left < 0:
         # Insufficient cash, return error message
         return {"error": "Insufficient cash! This action will not be allowed.", "required_cash": this_symbol_price * amount, "cash_available": current_position.get("CASH", 0), "symbol": symbol, "date": today_date}
-    else:
-        # Step 5: Execute buy operation, update position
-        # Create a copy of current position to avoid directly modifying original data
-        new_position = current_position.copy()
-        
-        # Decrease cash balance
-        new_position["CASH"] = cash_left
-        
-        # Increase stock position quantity
-        new_position[symbol] += amount
-        
-        # Step 6: Record transaction to position.jsonl file
-        # Build file path: {project_root}/data/agent_data/{signature}/position/position.jsonl
-        # Use append mode ("a") to write new transaction record
-        # Each operation ID increments by 1, ensuring uniqueness of operation sequence
-        position_file_path = os.path.join(project_root, "data", "agent_data", signature, "position", "position.jsonl")
-        with open(position_file_path, "a") as f:
-            # Write JSON format transaction record, containing date, operation ID, transaction details and updated position
-            print(f"Writing to position.jsonl: {json.dumps({'date': today_date, 'id': current_action_id + 1, 'this_action':{'action':'buy','symbol':symbol,'amount':amount},'positions': new_position})}")
-            f.write(json.dumps({"date": today_date, "id": current_action_id + 1, "this_action":{"action":"buy","symbol":symbol,"amount":amount},"positions": new_position}) + "\n")
-        # Step 7: Return updated position
-        write_config_value("IF_TRADE", True)
-        print("IF_TRADE", get_config_value("IF_TRADE"))
-        return new_position
+    
+    # Step 4.1: Risk management checks
+    # Get all current prices for portfolio valuation
+    all_prices = get_open_prices(today_date, all_nasdaq_100_symbols)
+    portfolio_value = calculate_portfolio_value(current_position, all_prices)
+    
+    # Check position limit
+    current_position_value = current_position.get(symbol, 0) * this_symbol_price
+    trade_value = this_symbol_price * amount
+    pos_ok, pos_msg = risk_manager.check_position_limit(
+        symbol, current_position_value, trade_value, portfolio_value
+    )
+    if not pos_ok:
+        return {
+            "error": f"Position limit exceeded! {pos_msg}",
+            "symbol": symbol,
+            "date": today_date,
+            "risk_warning": True
+        }
+    
+    # Check cash reserve
+    reserve_ok, reserve_msg = risk_manager.check_cash_reserve(
+        current_position.get("CASH", 0), portfolio_value, trade_value
+    )
+    if not reserve_ok:
+        return {
+            "warning": f"Cash reserve warning: {reserve_msg}",
+            "symbol": symbol,
+            "date": today_date,
+            "proceed_with_caution": True
+        }
+    
+    # Check max drawdown
+    drawdown_exceeded, drawdown, drawdown_msg = risk_manager.check_max_drawdown(portfolio_value)
+    if drawdown_exceeded:
+        return {
+            "warning": f"Max drawdown exceeded! {drawdown_msg}",
+            "symbol": symbol,
+            "date": today_date,
+            "current_drawdown": f"{drawdown:.1%}",
+            "suggest_reduce_position": True
+        }
+    
+    # All checks passed, proceed with buy
+    # Step 5: Execute buy operation, update position
+    # Create a copy of current position to avoid directly modifying original data
+    new_position = current_position.copy()
+    
+    # Decrease cash balance
+    new_position["CASH"] = cash_left
+    
+    # Increase stock position quantity
+    new_position[symbol] = new_position.get(symbol, 0) + amount
+    
+    # Step 5.1: Record entry price for stop-loss/take-profit tracking
+    risk_manager.set_entry_price(symbol, this_symbol_price)
+    risk_manager.record_trade(today_date)
+    
+    # Step 6: Record transaction to position.jsonl file
+    # Build file path: {project_root}/data/agent_data/{signature}/position/position.jsonl
+    # Use append mode ("a") to write new transaction record
+    # Each operation ID increments by 1, ensuring uniqueness of operation sequence
+    position_file_path = os.path.join(project_root, "data", "agent_data", signature, "position", "position.jsonl")
+    with open(position_file_path, "a") as f:
+        # Write JSON format transaction record, containing date, operation ID, transaction details and updated position
+        trade_record = {
+            "date": today_date,
+            "id": current_action_id + 1,
+            "this_action": {
+                "action": "buy",
+                "symbol": symbol,
+                "amount": amount,
+                "price": this_symbol_price
+            },
+            "positions": new_position
+        }
+        print(f"Writing to position.jsonl: {json.dumps(trade_record)}")
+        f.write(json.dumps(trade_record) + "\n")
+    
+    # Step 7: Return updated position
+    write_config_value("IF_TRADE", True)
+    print("IF_TRADE", get_config_value("IF_TRADE"))
+    return new_position
 
 @mcp.tool()
 def sell(symbol: str, amount: int) -> Dict[str, Any]:
@@ -163,6 +246,28 @@ def sell(symbol: str, amount: int) -> Dict[str, Any]:
     if current_position[symbol] < amount:
         return {"error": "Insufficient shares! This action will not be allowed.", "have": current_position.get(symbol, 0), "want_to_sell": amount, "symbol": symbol, "date": today_date}
 
+    # Step 4.1: Risk management - check stop-loss/take-profit status
+    risk_manager = get_risk_manager()
+    entry_price = risk_manager.get_entry_price(symbol)
+    
+    # Calculate P&L info for the trade record
+    pnl_info = {}
+    if entry_price and entry_price > 0:
+        pnl_pct = (this_symbol_price - entry_price) / entry_price
+        pnl_amount = (this_symbol_price - entry_price) * amount
+        pnl_info = {
+            "entry_price": entry_price,
+            "exit_price": this_symbol_price,
+            "pnl_pct": f"{pnl_pct:.2%}",
+            "pnl_amount": round(pnl_amount, 2)
+        }
+        
+        # Check if this is a stop-loss or take-profit trigger
+        sl_tp_result = risk_manager.check_stop_loss_take_profit(symbol, this_symbol_price, entry_price)
+        if sl_tp_result["trigger_type"]:
+            pnl_info["trigger_type"] = sl_tp_result["trigger_type"]
+            print(f"📊 {sl_tp_result['reason']}")
+
     # Step 5: Execute sell operation, update position
     # Create a copy of current position to avoid directly modifying original data
     new_position = current_position.copy()
@@ -174,6 +279,13 @@ def sell(symbol: str, amount: int) -> Dict[str, Any]:
     # Use get method to ensure CASH field exists, default to 0 if not present
     new_position["CASH"] = new_position.get("CASH", 0) + this_symbol_price * amount
 
+    # Step 5.1: Clear entry price if position is fully closed
+    if new_position[symbol] == 0:
+        risk_manager.clear_entry_price(symbol)
+    
+    # Record trade for frequency tracking
+    risk_manager.record_trade(today_date)
+
     # Step 6: Record transaction to position.jsonl file
     # Build file path: {project_root}/data/agent_data/{signature}/position/position.jsonl
     # Use append mode ("a") to write new transaction record
@@ -181,12 +293,27 @@ def sell(symbol: str, amount: int) -> Dict[str, Any]:
     position_file_path = os.path.join(project_root, "data", "agent_data", signature, "position", "position.jsonl")
     with open(position_file_path, "a") as f:
         # Write JSON format transaction record, containing date, operation ID and updated position
-        print(f"Writing to position.jsonl: {json.dumps({'date': today_date, 'id': current_action_id + 1, 'this_action':{'action':'sell','symbol':symbol,'amount':amount},'positions': new_position})}")
-        f.write(json.dumps({"date": today_date, "id": current_action_id + 1, "this_action":{"action":"sell","symbol":symbol,"amount":amount},"positions": new_position}) + "\n")
+        trade_record = {
+            "date": today_date,
+            "id": current_action_id + 1,
+            "this_action": {
+                "action": "sell",
+                "symbol": symbol,
+                "amount": amount,
+                "price": this_symbol_price,
+                **pnl_info  # Include P&L info if available
+            },
+            "positions": new_position
+        }
+        print(f"Writing to position.jsonl: {json.dumps(trade_record)}")
+        f.write(json.dumps(trade_record) + "\n")
 
-    # Step 7: Return updated position
+    # Step 7: Return updated position with P&L info
     write_config_value("IF_TRADE", True)
-    return new_position
+    result = new_position.copy()
+    if pnl_info:
+        result["_trade_pnl"] = pnl_info
+    return result
 
 if __name__ == "__main__":
     # new_result = buy("AAPL", 1)

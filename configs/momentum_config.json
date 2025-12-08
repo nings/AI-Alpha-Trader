@@ -1,0 +1,40 @@
+{
+  "agent_type": "MomentumAgent",
+  "date_range": {
+    "init_date": "2025-10-01",
+    "end_date": "2025-10-31"
+  },
+  "models": [
+    {
+      "name": "momentum-aggressive",
+      "signature": "momentum-aggressive",
+      "enabled": true,
+      "lookback_period": 20,
+      "top_n_stocks": 10,
+      "momentum_threshold": 0.0,
+      "max_position_pct": 0.15,
+      "stop_loss_pct": 0.08,
+      "use_risk_management": true
+    },
+    {
+      "name": "momentum-conservative",
+      "signature": "momentum-conservative",
+      "enabled": false,
+      "lookback_period": 30,
+      "top_n_stocks": 5,
+      "momentum_threshold": 0.1,
+      "max_position_pct": 0.10,
+      "stop_loss_pct": 0.05,
+      "use_risk_management": true
+    }
+  ],
+  "agent_config": {
+    "max_steps": 30,
+    "max_retries": 3,
+    "base_delay": 1.0,
+    "initial_cash": 10000.0
+  },
+  "log_config": {
+    "log_path": "./data/agent_data"
+  }
+}

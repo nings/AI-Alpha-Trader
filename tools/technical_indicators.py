@@ -362,10 +362,548 @@ def get_technical_signals(
     return signals
 
 
+# ==================== 新增技术指标 ====================
+
+def calculate_atr(
+    high_prices: List[float],
+    low_prices: List[float],
+    close_prices: List[float],
+    period: int = 14
+) -> Optional[float]:
+    """
+    计算平均真实波幅 (Average True Range)
+    
+    ATR 用于衡量市场波动性
+    
+    Args:
+        high_prices: 最高价列表
+        low_prices: 最低价列表
+        close_prices: 收盘价列表
+        period: 周期（默认14天）
+        
+    Returns:
+        ATR值，如果数据不足返回None
+    """
+    if len(high_prices) < period + 1 or len(low_prices) < period + 1 or len(close_prices) < period + 1:
+        return None
+    
+    true_ranges = []
+    for i in range(1, len(close_prices)):
+        high = high_prices[i]
+        low = low_prices[i]
+        prev_close = close_prices[i - 1]
+        
+        # True Range = max(High - Low, |High - Prev Close|, |Low - Prev Close|)
+        tr = max(
+            high - low,
+            abs(high - prev_close),
+            abs(low - prev_close)
+        )
+        true_ranges.append(tr)
+    
+    if len(true_ranges) < period:
+        return None
+    
+    # 使用 EMA 计算 ATR
+    atr = sum(true_ranges[:period]) / period
+    multiplier = 2 / (period + 1)
+    
+    for tr in true_ranges[period:]:
+        atr = (tr - atr) * multiplier + atr
+    
+    return atr
+
+
+def calculate_obv(
+    close_prices: List[float],
+    volumes: List[float]
+) -> Optional[List[float]]:
+    """
+    计算能量潮指标 (On-Balance Volume)
+    
+    OBV 通过累计成交量来预测价格走势
+    
+    Args:
+        close_prices: 收盘价列表
+        volumes: 成交量列表
+        
+    Returns:
+        OBV值列表，如果数据不足返回None
+    """
+    if len(close_prices) < 2 or len(volumes) < 2:
+        return None
+    
+    if len(close_prices) != len(volumes):
+        return None
+    
+    obv = [0]
+    for i in range(1, len(close_prices)):
+        if close_prices[i] > close_prices[i - 1]:
+            obv.append(obv[-1] + volumes[i])
+        elif close_prices[i] < close_prices[i - 1]:
+            obv.append(obv[-1] - volumes[i])
+        else:
+            obv.append(obv[-1])
+    
+    return obv
+
+
+def calculate_stochastic(
+    high_prices: List[float],
+    low_prices: List[float],
+    close_prices: List[float],
+    k_period: int = 14,
+    d_period: int = 3
+) -> Optional[Tuple[float, float]]:
+    """
+    计算随机指标 (Stochastic Oscillator)
+    
+    Args:
+        high_prices: 最高价列表
+        low_prices: 最低价列表
+        close_prices: 收盘价列表
+        k_period: %K 周期（默认14）
+        d_period: %D 周期（默认3）
+        
+    Returns:
+        (%K, %D) 元组，如果数据不足返回None
+    """
+    if len(close_prices) < k_period + d_period:
+        return None
+    
+    # 计算 %K 值序列
+    k_values = []
+    for i in range(k_period - 1, len(close_prices)):
+        period_high = max(high_prices[i - k_period + 1:i + 1])
+        period_low = min(low_prices[i - k_period + 1:i + 1])
+        
+        if period_high == period_low:
+            k_values.append(50)  # 避免除零
+        else:
+            k = 100 * (close_prices[i] - period_low) / (period_high - period_low)
+            k_values.append(k)
+    
+    if len(k_values) < d_period:
+        return None
+    
+    # %K 是最新值
+    k = k_values[-1]
+    
+    # %D 是 %K 的移动平均
+    d = sum(k_values[-d_period:]) / d_period
+    
+    return k, d
+
+
+def calculate_williams_r(
+    high_prices: List[float],
+    low_prices: List[float],
+    close_prices: List[float],
+    period: int = 14
+) -> Optional[float]:
+    """
+    计算威廉指标 (Williams %R)
+    
+    Args:
+        high_prices: 最高价列表
+        low_prices: 最低价列表
+        close_prices: 收盘价列表
+        period: 周期（默认14）
+        
+    Returns:
+        Williams %R 值 (-100 到 0)
+    """
+    if len(close_prices) < period:
+        return None
+    
+    period_high = max(high_prices[-period:])
+    period_low = min(low_prices[-period:])
+    current_close = close_prices[-1]
+    
+    if period_high == period_low:
+        return -50
+    
+    williams_r = -100 * (period_high - current_close) / (period_high - period_low)
+    return williams_r
+
+
+def calculate_cci(
+    high_prices: List[float],
+    low_prices: List[float],
+    close_prices: List[float],
+    period: int = 20
+) -> Optional[float]:
+    """
+    计算商品通道指数 (Commodity Channel Index)
+    
+    Args:
+        high_prices: 最高价列表
+        low_prices: 最低价列表
+        close_prices: 收盘价列表
+        period: 周期（默认20）
+        
+    Returns:
+        CCI 值
+    """
+    if len(close_prices) < period:
+        return None
+    
+    # 计算典型价格 (Typical Price)
+    typical_prices = []
+    for i in range(len(close_prices)):
+        tp = (high_prices[i] + low_prices[i] + close_prices[i]) / 3
+        typical_prices.append(tp)
+    
+    # 计算 SMA
+    sma = sum(typical_prices[-period:]) / period
+    
+    # 计算平均绝对偏差
+    mean_deviation = sum(abs(tp - sma) for tp in typical_prices[-period:]) / period
+    
+    if mean_deviation == 0:
+        return 0
+    
+    current_tp = typical_prices[-1]
+    cci = (current_tp - sma) / (0.015 * mean_deviation)
+    
+    return cci
+
+
+def calculate_momentum(
+    prices: List[float],
+    period: int = 10
+) -> Optional[float]:
+    """
+    计算动量指标 (Momentum)
+    
+    Args:
+        prices: 价格列表
+        period: 周期（默认10）
+        
+    Returns:
+        动量值
+    """
+    if len(prices) < period + 1:
+        return None
+    
+    return prices[-1] - prices[-period - 1]
+
+
+def calculate_roc(
+    prices: List[float],
+    period: int = 10
+) -> Optional[float]:
+    """
+    计算变动率指标 (Rate of Change)
+    
+    Args:
+        prices: 价格列表
+        period: 周期（默认10）
+        
+    Returns:
+        ROC 值（百分比）
+    """
+    if len(prices) < period + 1:
+        return None
+    
+    prev_price = prices[-period - 1]
+    if prev_price == 0:
+        return 0
+    
+    return ((prices[-1] - prev_price) / prev_price) * 100
+
+
+def calculate_adx(
+    high_prices: List[float],
+    low_prices: List[float],
+    close_prices: List[float],
+    period: int = 14
+) -> Optional[Tuple[float, float, float]]:
+    """
+    计算平均趋向指数 (Average Directional Index)
+    
+    Args:
+        high_prices: 最高价列表
+        low_prices: 最低价列表
+        close_prices: 收盘价列表
+        period: 周期（默认14）
+        
+    Returns:
+        (ADX, +DI, -DI) 元组
+    """
+    if len(close_prices) < period * 2:
+        return None
+    
+    # 计算 +DM 和 -DM
+    plus_dm = []
+    minus_dm = []
+    tr_list = []
+    
+    for i in range(1, len(close_prices)):
+        high_diff = high_prices[i] - high_prices[i - 1]
+        low_diff = low_prices[i - 1] - low_prices[i]
+        
+        if high_diff > low_diff and high_diff > 0:
+            plus_dm.append(high_diff)
+        else:
+            plus_dm.append(0)
+        
+        if low_diff > high_diff and low_diff > 0:
+            minus_dm.append(low_diff)
+        else:
+            minus_dm.append(0)
+        
+        # True Range
+        tr = max(
+            high_prices[i] - low_prices[i],
+            abs(high_prices[i] - close_prices[i - 1]),
+            abs(low_prices[i] - close_prices[i - 1])
+        )
+        tr_list.append(tr)
+    
+    if len(tr_list) < period:
+        return None
+    
+    # 平滑计算
+    smoothed_plus_dm = sum(plus_dm[:period])
+    smoothed_minus_dm = sum(minus_dm[:period])
+    smoothed_tr = sum(tr_list[:period])
+    
+    for i in range(period, len(tr_list)):
+        smoothed_plus_dm = smoothed_plus_dm - (smoothed_plus_dm / period) + plus_dm[i]
+        smoothed_minus_dm = smoothed_minus_dm - (smoothed_minus_dm / period) + minus_dm[i]
+        smoothed_tr = smoothed_tr - (smoothed_tr / period) + tr_list[i]
+    
+    if smoothed_tr == 0:
+        return 0, 0, 0
+    
+    plus_di = 100 * smoothed_plus_dm / smoothed_tr
+    minus_di = 100 * smoothed_minus_dm / smoothed_tr
+    
+    di_sum = plus_di + minus_di
+    if di_sum == 0:
+        dx = 0
+    else:
+        dx = 100 * abs(plus_di - minus_di) / di_sum
+    
+    # ADX 是 DX 的平滑平均
+    adx = dx  # 简化版本
+    
+    return adx, plus_di, minus_di
+
+
+def calculate_fibonacci_retracement(
+    high: float,
+    low: float
+) -> Dict[str, float]:
+    """
+    计算斐波那契回撤位
+    
+    Args:
+        high: 最高价
+        low: 最低价
+        
+    Returns:
+        各回撤位价格
+    """
+    diff = high - low
+    
+    return {
+        "0.0%": high,
+        "23.6%": high - diff * 0.236,
+        "38.2%": high - diff * 0.382,
+        "50.0%": high - diff * 0.500,
+        "61.8%": high - diff * 0.618,
+        "78.6%": high - diff * 0.786,
+        "100.0%": low
+    }
+
+
+def calculate_pivot_points(
+    high: float,
+    low: float,
+    close: float
+) -> Dict[str, float]:
+    """
+    计算枢轴点 (Pivot Points)
+    
+    Args:
+        high: 最高价
+        low: 最低价
+        close: 收盘价
+        
+    Returns:
+        枢轴点和支撑/阻力位
+    """
+    pivot = (high + low + close) / 3
+    
+    return {
+        "pivot": pivot,
+        "r1": 2 * pivot - low,
+        "r2": pivot + (high - low),
+        "r3": high + 2 * (pivot - low),
+        "s1": 2 * pivot - high,
+        "s2": pivot - (high - low),
+        "s3": low - 2 * (high - pivot)
+    }
+
+
+def get_extended_technical_signals(
+    symbol: str,
+    end_date: str,
+    merged_path: Optional[str] = None
+) -> Dict[str, any]:
+    """
+    获取扩展的技术分析信号（包含更多指标）
+    
+    Args:
+        symbol: 股票代码
+        end_date: 结束日期
+        merged_path: 可选，自定义merged.jsonl路径
+        
+    Returns:
+        包含扩展技术指标和交易信号的字典
+    """
+    # 获取基础信号
+    signals = get_technical_signals(symbol, end_date, merged_path)
+    
+    if "error" in signals:
+        return signals
+    
+    # 获取历史价格数据
+    historical_data = get_historical_prices(symbol, end_date, days=50, merged_path=merged_path)
+    
+    if not historical_data:
+        return signals
+    
+    close_prices = [d["close"] for d in historical_data]
+    high_prices = [d["high"] for d in historical_data]
+    low_prices = [d["low"] for d in historical_data]
+    volumes = [d["volume"] for d in historical_data]
+    
+    # 添加扩展指标
+    extended_indicators = {}
+    extended_signals = {}
+    
+    # ATR
+    atr = calculate_atr(high_prices, low_prices, close_prices)
+    if atr:
+        extended_indicators["atr"] = round(atr, 2)
+    
+    # Stochastic
+    stoch = calculate_stochastic(high_prices, low_prices, close_prices)
+    if stoch:
+        k, d = stoch
+        extended_indicators["stoch_k"] = round(k, 2)
+        extended_indicators["stoch_d"] = round(d, 2)
+        
+        if k < 20 and d < 20:
+            extended_signals["stochastic"] = "超卖-买入"
+        elif k > 80 and d > 80:
+            extended_signals["stochastic"] = "超买-卖出"
+        else:
+            extended_signals["stochastic"] = "中性"
+    
+    # Williams %R
+    williams = calculate_williams_r(high_prices, low_prices, close_prices)
+    if williams:
+        extended_indicators["williams_r"] = round(williams, 2)
+        
+        if williams < -80:
+            extended_signals["williams"] = "超卖-买入"
+        elif williams > -20:
+            extended_signals["williams"] = "超买-卖出"
+        else:
+            extended_signals["williams"] = "中性"
+    
+    # CCI
+    cci = calculate_cci(high_prices, low_prices, close_prices)
+    if cci:
+        extended_indicators["cci"] = round(cci, 2)
+        
+        if cci < -100:
+            extended_signals["cci"] = "超卖-买入"
+        elif cci > 100:
+            extended_signals["cci"] = "超买-卖出"
+        else:
+            extended_signals["cci"] = "中性"
+    
+    # Momentum
+    momentum = calculate_momentum(close_prices)
+    if momentum:
+        extended_indicators["momentum"] = round(momentum, 2)
+        
+        if momentum > 0:
+            extended_signals["momentum"] = "上涨动能"
+        else:
+            extended_signals["momentum"] = "下跌动能"
+    
+    # ROC
+    roc = calculate_roc(close_prices)
+    if roc:
+        extended_indicators["roc"] = round(roc, 2)
+    
+    # ADX
+    adx_result = calculate_adx(high_prices, low_prices, close_prices)
+    if adx_result:
+        adx, plus_di, minus_di = adx_result
+        extended_indicators["adx"] = round(adx, 2)
+        extended_indicators["plus_di"] = round(plus_di, 2)
+        extended_indicators["minus_di"] = round(minus_di, 2)
+        
+        if adx > 25:
+            if plus_di > minus_di:
+                extended_signals["adx"] = "强势上涨趋势"
+            else:
+                extended_signals["adx"] = "强势下跌趋势"
+        else:
+            extended_signals["adx"] = "无明显趋势"
+    
+    # Pivot Points
+    if historical_data:
+        last_day = historical_data[-1]
+        pivots = calculate_pivot_points(last_day["high"], last_day["low"], last_day["close"])
+        extended_indicators["pivot_points"] = {k: round(v, 2) for k, v in pivots.items()}
+    
+    # 合并到原始信号
+    signals["indicators"].update(extended_indicators)
+    signals["signals"].update(extended_signals)
+    
+    # 重新计算综合信号
+    buy_signals = sum(1 for s in signals["signals"].values() if "买入" in str(s))
+    sell_signals = sum(1 for s in signals["signals"].values() if "卖出" in str(s))
+    
+    if buy_signals > sell_signals and buy_signals >= 3:
+        signals["recommendation"] = "强烈买入"
+    elif buy_signals > sell_signals and buy_signals >= 2:
+        signals["recommendation"] = "买入"
+    elif sell_signals > buy_signals and sell_signals >= 3:
+        signals["recommendation"] = "强烈卖出"
+    elif sell_signals > buy_signals and sell_signals >= 2:
+        signals["recommendation"] = "卖出"
+    else:
+        signals["recommendation"] = "持有"
+    
+    signals["signal_count"] = {
+        "buy": buy_signals,
+        "sell": sell_signals,
+        "total": len(signals["signals"])
+    }
+    
+    return signals
+
+
 if __name__ == "__main__":
     # 测试代码
     test_symbol = "AAPL"
     test_date = "2025-10-20"
 
+    # 测试基础信号
     signals = get_technical_signals(test_symbol, test_date)
+    print("基础信号:")
     print(json.dumps(signals, indent=2, ensure_ascii=False))
+    
+    # 测试扩展信号
+    print("\n扩展信号:")
+    extended = get_extended_technical_signals(test_symbol, test_date)
+    print(json.dumps(extended, indent=2, ensure_ascii=False))

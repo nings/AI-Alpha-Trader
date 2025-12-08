@@ -1,0 +1,23 @@
+[project]
+name = "ai-alpha-trader"
+version = "0.1.0"
+description = "AI-Trader: Can AI Beat the Market?"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "langchain>=1.0.2",
+    "langchain-openai>=1.0.1",
+    "langchain-mcp-adapters>=0.1.0",
+    "fastmcp>=2.12.5",
+    "langgraph>=1.0.4",
+    "python-dotenv>=1.0.0",
+    "requests>=2.31.0",
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+]
+
+[project.scripts]
+ai-trader = "main:main"
+
+[tool.uv]
+dev-dependencies = []
